@@ -180,6 +180,11 @@ void draw_hierarchy_window() {
     ImGui::SetNextWindowPos(ImVec2(1590, 10), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(400, 600), ImGuiCond_Always);
     ImGui::Begin("Hierarchy", nullptr, ImGuiWindowFlags_NoResize);
+    IGFD::FileDialogConfig fileDialogConfig;
+    fileDialogConfig.path = ".";
+    fileDialogConfig.fileName = "";
+    fileDialogConfig.countSelectionMax = 1;
+    fileDialogConfig.flags = ImGuiFileDialogFlags_None;
 
     for (size_t i = 0; i < importedMeshes.size(); ++i) {
         ImportedMesh& mesh = importedMeshes[i];
@@ -192,6 +197,45 @@ void draw_hierarchy_window() {
             ImGui::DragFloat3("Scale", glm::value_ptr(mesh.scale), 0.1f);
             ImGui::ColorEdit4("Tint", glm::value_ptr(mesh.tintColor));
             ImGui::DragFloat("Shininess", &mesh.shininess, 1.0f, 1.0f, 128.0f);
+
+            // Add texture change feature
+            static char textureBuffer[512];
+            strncpy_s(textureBuffer, mesh.textureFile.c_str(), sizeof(textureBuffer));
+            if (ImGui::Button("Change Texture")) {
+                ImGuiFileDialog::Instance()->OpenDialog("ChangeTexture", "Select Texture File", ".png,.jpg,.bmp",fileDialogConfig);
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s", mesh.textureFile.c_str());
+            if (ImGuiFileDialog::Instance()->Display("ChangeTexture", 32, ImVec2(500, 500), ImVec2(800, 800))) {
+                if (ImGuiFileDialog::Instance()->IsOk()) {
+                    mesh.textureFile = ImGuiFileDialog::Instance()->GetFilePathName();
+                    mesh.textureID = LoadTexture(mesh.textureFile); // Reload the texture
+                    mesh.hasTexture = true;
+                }
+                ImGuiFileDialog::Instance()->Close();
+            }
+
+            // Add normal map change feature
+            static char normalMapBuffer[512];
+            strncpy_s(normalMapBuffer, mesh.normalMapFile.c_str(), sizeof(normalMapBuffer));
+            if (ImGui::Button("Change Normal Map")) {
+                ImGuiFileDialog::Instance()->OpenDialog("ChangeNormalMap", "Select Normal Map File", ".png,.jpg,.bmp", fileDialogConfig);
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s", mesh.normalMapFile.c_str());
+            if (ImGuiFileDialog::Instance()->Display("ChangeNormalMap", 32, ImVec2(500, 500), ImVec2(800, 800))) {
+                if (ImGuiFileDialog::Instance()->IsOk()) {
+                    mesh.normalMapFile = ImGuiFileDialog::Instance()->GetFilePathName();
+                    mesh.normalMapID = LoadTexture(mesh.normalMapFile); // Reload the normal map
+                    mesh.hasNormalMap = true;
+                }
+                ImGuiFileDialog::Instance()->Close();
+            }
+
+            // Toggles for using texture and normal map
+            ImGui::Checkbox("Use Texture", &mesh.hasTexture);
+            ImGui::Checkbox("Use Normal Map", &mesh.hasNormalMap);
+
 
             if (ImGui::Button("Delete")) {
                 importedMeshes.erase(importedMeshes.begin() + i);
@@ -265,6 +309,28 @@ void draw_gui(GLFWwindow* window) {
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 }
 
+void render_light_indicators(const glm::mat4& projectionMatrix, const glm::mat4& viewMatrix) {
+    glUseProgram(shaderProgram); // Use the same shader
+
+    for (const auto& light : lights) {
+        glm::mat4 T = glm::translate(light.position); // Position the light indicator
+        glm::mat4 S = glm::scale(glm::vec3(0.1f));    // Scale it down
+        glm::mat4 M = T * S;
+        glm::mat4 PVM = projectionMatrix * viewMatrix * M;
+
+        // Pass transformation matrix
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "PVM"), 1, GL_FALSE, glm::value_ptr(PVM));
+
+        // Pass light color as the indicator color
+        glUniform4fv(glGetUniformLocation(shaderProgram, "tintColor"), 1, glm::value_ptr(glm::vec4(light.color, 1.0f)));
+
+        // Render a single point at the light position
+        glPointSize(10.0f);  // Customize the point size
+        glDrawArrays(GL_POINTS, 0, 1);
+    }
+}
+
+
 void display(GLFWwindow* window) {
     if (clearScreen) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -281,6 +347,23 @@ void display(GLFWwindow* window) {
             glm::rotate(mesh.rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
         glm::mat4 M = T * S * R;
         glm::mat4 PVM = P * V * M;
+        if (mesh.hasTexture && mesh.textureID != -1) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, mesh.textureID);
+            glUniform1i(glGetUniformLocation(shaderProgram, "diffuse_tex"), 0);
+        }
+        else {
+            glBindTexture(GL_TEXTURE_2D, 0); // Unbind if no texture
+        }
+        if (mesh.hasNormalMap && mesh.normalMapID != -1) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, mesh.normalMapID);
+            glUniform1i(glGetUniformLocation(shaderProgram, "normal_tex"), 1);
+        }
+        else {
+            glBindTexture(GL_TEXTURE_2D, 0); // Unbind if no normal map
+        }
+
 
         glUseProgram(shaderProgram);
 
@@ -290,7 +373,7 @@ void display(GLFWwindow* window) {
             glBindTexture(GL_TEXTURE_2D, mesh.textureID);
             glUniform1i(glGetUniformLocation(shaderProgram, "diffuse_tex"), 0);
         }
-
+        glUniform1f(glGetUniformLocation(shaderProgram, "shininess"), mesh.shininess);
         glUniform4fv(glGetUniformLocation(shaderProgram, "tintColor"), 1, glm::value_ptr(mesh.tintColor));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "PVM"), 1, false, glm::value_ptr(PVM));
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "M"), 1, false, glm::value_ptr(M));
@@ -314,6 +397,7 @@ void display(GLFWwindow* window) {
         glBindVertexArray(mesh.mesh.mVao);
         mesh.mesh.DrawMesh();
     }
+    render_light_indicators(P, V);
 
     draw_gui(window);
     glfwSwapBuffers(window);
