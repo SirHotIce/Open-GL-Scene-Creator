@@ -14,6 +14,10 @@ uniform float shininess;         // Shininess for specular highlights
 uniform bool useTexture;         // Boolean to indicate if a texture is used
 uniform bool useNormalMap;       // Boolean to indicate if a normal map is used
 
+uniform samplerCube environmentMap; // HDR cubemap
+uniform float hdrIntensity;         // HDR intensity scaling
+uniform vec3 hdrRotation;           // Rotation of the HDR cubemap
+
 in vec3 fragPos;                 // Fragment position
 in vec3 normal;                  // Interpolated normal
 in vec2 tex_coord;               // Texture coordinates
@@ -54,10 +58,19 @@ void main() {
         specular += spec * lightColor[i] * lightIntensity[i];
     }
 
-    // Combine lighting components
-    vec3 lighting = ambient + diffuse + specular;
 
-    // Apply texture only if it exists; otherwise, use white
-    vec4 texColor = useTexture ? texture(diffuse_tex, tex_coord) : vec4(1.0);
-    fragcolor = texColor * vec4(lighting, 1.0) * tintColor;
+// Combine HDR reflection with the current lighting
+vec3 lighting = ambient + diffuse + specular;
+vec3 hdrReflection = vec3(0.0);
+if (hdrIntensity > 0.0) { // Apply reflection only if intensity is non-zero
+    vec3 reflectedDir = reflect(-viewDir, norm);
+    hdrReflection = texture(environmentMap, reflectedDir).rgb * hdrIntensity;
+}
+lighting += hdrReflection;
+
+// Apply texture only if it exists; otherwise, use white
+vec4 texColor = useTexture ? texture(diffuse_tex, tex_coord) : vec4(1.0);
+fragcolor = texColor * vec4(lighting, 1.0) * tintColor;
+
+
 }

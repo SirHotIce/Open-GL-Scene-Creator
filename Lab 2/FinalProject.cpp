@@ -22,6 +22,8 @@
 #include <sstream>
 #include <vector>
 #include <random>
+#include <stb/stb_image.h>
+#include "FinalProject.h"
 
 bool clearScreen = true;
 bool enableDepthTest = true;
@@ -76,6 +78,10 @@ struct Light {
 std::vector<Light> lights;
 int selectedLightType = 0; // 0 = Point, 1 = Directional
 const char* lightTypes[] = { "Point", "Directional" };
+GLuint skyboxVAO, skyboxVBO, cubemapTexture, skyboxShaderProgram;
+float hdrIntensity;
+std::string hdriFilePath = "";
+glm::vec3 hdrRotation = glm::vec3(0.0f);
 
 
 int generate_unique_id() {
@@ -90,6 +96,160 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
     aspect_ratio = static_cast<float>(width) / static_cast<float>(height);
 }
+GLuint createDummyCubemap() {
+    GLuint dummyCubemap;
+    glGenTextures(1, &dummyCubemap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, dummyCubemap);
+
+    unsigned char black[3] = { 0, 0, 0 }; // Black color
+    for (unsigned int i = 0; i < 6; ++i) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, black);
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    return dummyCubemap;
+}
+bool testFileRead(const std::string& filepath) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        std::cerr << "Cannot open file: " << filepath << std::endl;
+        return false;
+    }
+    std::cout << "File read successfully: " << filepath << std::endl;
+    return true;
+}
+
+void initSkybox() {
+    float skyboxVertices[] = {
+        // Positions          
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f
+    };
+
+
+    // Generate VAO and VBO for the skybox
+    glGenVertexArrays(1, &skyboxVAO);
+    glGenBuffers(1, &skyboxVBO);
+    glBindVertexArray(skyboxVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glGenVertexArrays(1, &skyboxVAO);
+
+
+
+    if (cubemapTexture == 0) {
+        cubemapTexture = createDummyCubemap();
+    }
+    
+
+    std::string vs = "shaders/skybox_vs.glsl";
+    std::string fs = "shaders/skybox_fs.glsl";
+    std::cout << "Vertex Shader Source:\n" << vs << std::endl;
+    std::cout << "Fragment Shader Source:\n" << fs << std::endl;
+    glUseProgram(skyboxShaderProgram);
+    testFileRead(fs);
+    GLint currentProgram;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    if (currentProgram != skyboxShaderProgram) {
+        std::cerr << "Skybox shader program is not active!" << std::endl;
+    }
+
+    GLuint skyboxShaderProgram = InitShader(vs.c_str(), fs.c_str());
+}
+
+
+GLuint loadHDRCubemap(const std::string& filepath) {
+    stbi_set_flip_vertically_on_load(true);
+    int width, height, nrComponents;
+    float* data = stbi_loadf(filepath.c_str(), &width, &height, &nrComponents, 0);
+    if (!data) {
+        std::cerr << "Failed to load HDR image: " << filepath << std::endl;
+        return 0;
+    }
+
+    GLuint hdrCubemap;
+    glGenTextures(1, &hdrCubemap);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, hdrCubemap);
+
+    // Allocate cubemap faces (you'll need to fill them via rendering)
+    for (unsigned int i = 0; i < 6; ++i) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    stbi_image_free(data);
+
+    return hdrCubemap;
+}
+
+void renderSkybox(const glm::mat4& projectionMatrix, const glm::mat4& viewMatrix) {
+    glDepthFunc(GL_LEQUAL); // Ensure skybox is rendered behind everything
+    glUseProgram(skyboxShaderProgram);
+
+    // Remove translation from the view matrix
+    glm::mat4 view = glm::mat4(glm::mat3(viewMatrix));
+    glUniformMatrix4fv(glGetUniformLocation(skyboxShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(glGetUniformLocation(skyboxShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projectionMatrix));
+    glUniform1f(glGetUniformLocation(skyboxShaderProgram, "hdrIntensity"), hdrIntensity);
+    glBindVertexArray(skyboxVAO);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    glDepthFunc(GL_LESS); // Reset depth function
+}
+
+
 
 void draw_mesh_import_window() {
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
@@ -175,6 +335,40 @@ void draw_mesh_import_window() {
         ImGuiFileDialog::Instance()->Close();
     }
 }
+
+
+void drawHDRIWindow() {
+    ImGui::SetNextWindowPos(ImVec2(10, 540), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(400, 200), ImGuiCond_Always);
+    ImGui::Begin("HDRI Management", nullptr, ImGuiWindowFlags_NoResize);
+    IGFD::FileDialogConfig fileDialogConfig;
+    fileDialogConfig.path = ".";
+    fileDialogConfig.fileName = "";
+    fileDialogConfig.countSelectionMax = 1;
+    fileDialogConfig.flags = ImGuiFileDialogFlags_None;
+
+    if (hdriFilePath.empty()) {
+        if (ImGui::Button("Import HDRI")) {
+            ImGuiFileDialog::Instance()->OpenDialog("ChooseHDRIFile", "Select HDRI", ".hdr,.exr", fileDialogConfig);
+        }
+    }
+    else {
+        ImGui::Text("HDRI Loaded: %s", hdriFilePath.c_str());
+        ImGui::SliderFloat("HDR Intensity", &hdrIntensity, 0.1f, 10.0f);
+        ImGui::DragFloat3("HDR Rotation", glm::value_ptr(hdrRotation), 0.1f);
+    }
+
+    if (ImGuiFileDialog::Instance()->Display("ChooseHDRIFile", 32, ImVec2(500, 500), ImVec2(800, 800))) {
+        if (ImGuiFileDialog::Instance()->IsOk()) {
+            hdriFilePath = ImGuiFileDialog::Instance()->GetFilePathName();
+            cubemapTexture = loadHDRCubemap(hdriFilePath);
+        }
+        ImGuiFileDialog::Instance()->Close();
+    }
+
+    ImGui::End();
+}
+
 
 void draw_hierarchy_window() {
     ImGui::SetNextWindowPos(ImVec2(1590, 10), ImGuiCond_Always);
@@ -304,6 +498,7 @@ void draw_gui(GLFWwindow* window) {
     draw_mesh_import_window();
     draw_hierarchy_window();
     draw_light_system();
+    drawHDRIWindow();
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -338,6 +533,8 @@ void display(GLFWwindow* window) {
 
     glm::mat4 V = glm::lookAt(camera_position, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     glm::mat4 P = glm::perspective(camera_fov, aspect_ratio, near_clip, far_clip);
+
+   renderSkybox(P, V);
 
     for (auto& mesh : importedMeshes) {
         glm::mat4 T = glm::translate(mesh.position);
@@ -425,6 +622,7 @@ void init() {
         glEnable(GL_DEPTH_TEST);
 
     reload_shader();
+    initSkybox();
 }
 
 int main(void) {
