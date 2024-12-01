@@ -103,13 +103,11 @@
     <None Include="shaders\f_vs.glsl">
       <Filter>shaders</Filter>
     </None>
-    <None Include="skybox_vs.glsl">
+    <None Include="shaders\skybox_fs.glsl">
       <Filter>shaders</Filter>
     </None>
-  </ItemGroup>
-  <ItemGroup>
-    <CopyFileToFolders Include="skybox_fs.glsl">
+    <None Include="shaders\skybox_vs.glsl">
       <Filter>shaders</Filter>
-    </CopyFileToFolders>
+    </None>
   </ItemGroup>
 </Project>
