@@ -376,7 +376,7 @@ void drawCameraOptions() {
     ImGui::SetNextWindowSize(ImVec2(400, 300), ImGuiCond_Always);
     ImGui::Begin("Camera Options");
     ImGui::Text("FP Controls: W-Forward, S- Back, A- Left, D- Right.");
-    ImGui::Text(", Q-Up, E-Down, Mouse-LookAround");
+    ImGui::Text(", Q-Up, E-Down, Mouse-LookAround, ESC- Close Full Screen");
     // Toggle for First Person Mode
     if (ImGui::Button(firstPersonMode ? "Exit First Person Mode" : "Enter First Person Mode")) {
         firstPersonMode = !firstPersonMode;
@@ -863,7 +863,7 @@ void display(GLFWwindow* window) {
 
 
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind any 2D textures
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0); // Unbind any 3D textures
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
         glUniform1i(glGetUniformLocation(shaderProgram, "environmentMap"), 1);
         glUniform1f(glGetUniformLocation(shaderProgram, "hdrIntensity"), cubeMapIntensity);

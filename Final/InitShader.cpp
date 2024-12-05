@@ -4,9 +4,6 @@
 #include <iostream>
 using namespace std;
 
-//Adapted from Edward Angels InitShader code
-
-// Create a NULL-terminated string by reading the provided file
 static char* readShaderSource(const char* shaderFile)
 {
    ifstream ifs(shaderFile, ios::in | ios::binary | ios::ate);
@@ -111,8 +108,6 @@ GLuint InitShader(const char* computeShaderFile)
    return program;
 }
 
-
-// Create a GLSL program object from vertex and fragment shader files
 GLuint InitShader(const char* vShaderFile, const char* fShaderFile)
 {
 

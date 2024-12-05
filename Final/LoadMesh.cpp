@@ -31,9 +31,7 @@ MeshData LoadMesh(const std::string& pFile)
       return mesh;
    }
 
-   mesh.mScene = gImporter.ReadFile(pFile, aiProcessPreset_TargetRealtime_Quality | aiProcess_PreTransformVertices); //PreTransformVertices makes multiple submeshes work
-
-                                                                                                                     // If the import failed, report it
+   mesh.mScene = gImporter.ReadFile(pFile, aiProcessPreset_TargetRealtime_Quality | aiProcess_PreTransformVertices); 
    if (!mesh.mScene)
    {
       printf("%s\n", gImporter.GetErrorString());
